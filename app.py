@@ -7,7 +7,7 @@ import json
 # 1. 페이지 설정
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="코즈코즈 파트너 마이너 (Rapid 2025)",
+    page_title="코즈코즈 파트너 마이너 (Final Fix)",
     page_icon="💎",
     layout="wide"
 )
@@ -33,18 +33,17 @@ PRODUCT_KNOWLEDGE_BASE = """
 # 3. 사이드바
 # -----------------------------------------------------------------------------
 with st.sidebar:
-    st.header("⚙️ 시스템 설정")
+    st.header("⚙️ 설정")
     api_key_gemini = st.text_input("Gemini API Key", type="password")
     api_key_rapid = st.text_input("RapidAPI Key", type="password")
-    st.caption("✅ Instagram Scraper 2025 엔진 탑재")
+    st.info("✅ 2025년형 파라미터 패치 완료")
 
 # -----------------------------------------------------------------------------
-# 4. 데이터 수집 함수 (2025년형 수정완료!)
+# 4. 데이터 수집 함수 (파라미터 이름 수정됨)
 # -----------------------------------------------------------------------------
 def fetch_instagram_data_rapid(username, rapid_key):
     if not rapid_key: return None, "RapidAPI 키가 필요합니다."
     
-    # 🚨 중요: 2025년형 호스트 주소로 변경됨
     HOST = "instagram-scraper-20251.p.rapidapi.com"
     HEADERS = {
         "x-rapidapi-key": rapid_key,
@@ -54,23 +53,26 @@ def fetch_instagram_data_rapid(username, rapid_key):
     try:
         # 1. 유저 정보 가져오기 (/userinfo)
         url_info = f"https://{HOST}/userinfo"
-        qs_info = {"username_or_id_url": username} # 파라미터명 변경됨
+        
+        # 🚨 [수정된 부분] 파라미터 이름을 API 명세서에 맞게 변경
+        qs_info = {"username_or_id_username": username} 
         
         resp_info = requests.get(url_info, headers=HEADERS, params=qs_info)
         
         if resp_info.status_code != 200:
-            return None, f"API 오류 ({resp_info.status_code}): {resp_info.text}"
+            # 에러 메시지를 더 자세히 반환
+            return None, f"유저 검색 실패 ({resp_info.status_code}): {resp_info.text}"
             
         data_info = resp_info.json()
         
-        # 데이터 구조가 복잡해서 안전하게 파싱
+        # 데이터 구조 파싱
         if "data" in data_info:
             profile = data_info["data"]
         else:
-            profile = data_info # 구조가 다를 경우 대비
+            profile = data_info
             
         if not profile or "id" not in profile:
-             return None, "사용자를 찾을 수 없습니다. (ID 확인)"
+             return None, f"사용자 정보 없음 (응답값: {str(data_info)[:100]}...)"
              
         user_id = profile["id"]
         
@@ -101,7 +103,6 @@ def analyze_with_gemini(data, gemini_key):
     profile = data['profile']
     posts = data['posts']
     
-    # 데이터 경량화
     simple_posts = []
     for p in posts[:8]:
         caption = p.get("caption", {}).get("text", "") if p.get("caption") else ""
@@ -117,7 +118,6 @@ def analyze_with_gemini(data, gemini_key):
     [상품정보] {PRODUCT_KNOWLEDGE_BASE}
     [프로필]
     - Bio: {profile.get('biography', '')}
-    - Link: {profile.get('external_url', '')}
     - Followers: {profile.get('follower_count', 0)}
     [최근 게시물] {json.dumps(simple_posts, ensure_ascii=False)}
     
@@ -138,26 +138,25 @@ def analyze_with_gemini(data, gemini_key):
 # -----------------------------------------------------------------------------
 # 5. 메인 화면
 # -----------------------------------------------------------------------------
-st.title("💎 CozCoz Partner Miner (2025 Ver)")
-st.caption("🚀 최신 RapidAPI 엔진이 적용되었습니다.")
+st.title("💎 CozCoz Partner Miner (Final Fix)")
 
-target_username = st.text_input("인스타그램 ID 입력")
+target_username = st.text_input("인스타그램 ID 입력 (예: nike)")
 
 if st.button("분석 시작") and target_username:
-    with st.status("데이터 수집 중... (2025 Engine)") as status:
+    # 에러 메시지를 밖으로 꺼내기 위해 st.status 대신 st.spinner 사용
+    with st.spinner("데이터 수집 중... (Rapid 2025)"):
         raw_data, error = fetch_instagram_data_rapid(target_username, api_key_rapid)
         
         if error:
-            st.error(f"❌ 실패: {error}")
-            status.update(label="실패", state="error")
+            # 빨간색 박스로 에러를 크게 보여줌
+            st.error(f"❌ 분석 실패: {error}")
+            st.warning("팁: RapidAPI 키가 정확한지, ID에 오타는 없는지 확인해주세요.")
         else:
-            st.write("AI 분석 중...")
+            st.success("데이터 수집 성공! AI 분석 시작...")
             res = analyze_with_gemini(raw_data, api_key_gemini)
             
             if res:
-                status.update(label="완료!", state="complete")
                 st.divider()
-                
                 c1, c2, c3 = st.columns(3)
                 c1.metric("팔로워", f"{raw_data['profile'].get('follower_count',0):,}명")
                 c2.metric("전략", res['strategy']['type'])
