@@ -3,3 +3,4 @@ google-generativeai
 apify-client
 pandas
 python-dotenv
+requests
