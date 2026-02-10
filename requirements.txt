@@ -1,0 +1,5 @@
+streamlit
+google-generativeai
+apify-client
+pandas
+python-dotenv
