@@ -149,4 +149,6 @@ if st.button("분석 시작") and target_username:
                 c1.metric("전략 유형", res['strategy']['type'])
                 c2.info(f"📞 컨택: {res['basic']['contact']}")
                 
-                st.subheader("📋 제안서
+                st.subheader("📋 제안서 초안")
+                st.text_area("복사용", res['message'], height=250)
+                st.success(res['strategy']['reason'])
