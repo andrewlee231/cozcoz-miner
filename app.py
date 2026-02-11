@@ -78,8 +78,6 @@ def analyze_with_gemini(data, gemini_key):
     model = genai.GenerativeModel("gemini-1.5-pro-latest", generation_config={"response_mime_type": "application/json"})
     
     # 데이터 전처리 (프로필과 게시물 분리)
-    # Apify 결과는 리스트 형태이며, 첫 번째 항목에 프로필 정보가 보통 포함됨
-    
     profile_summary = {}
     posts_summary = []
     
@@ -93,7 +91,7 @@ def analyze_with_gemini(data, gemini_key):
                 "type": item.get("type", "Image")
             })
         
-        # 프로필 데이터 찾기 (보통 첫 번째 아이템이나 별도 필드에 있음)
+        # 프로필 데이터 찾기
         if 'followersCount' in item and not profile_summary:
             profile_summary = {
                 "username": item.get("ownerUsername", ""),
@@ -102,8 +100,53 @@ def analyze_with_gemini(data, gemini_key):
                 "url": item.get("externalUrl", "")
             }
 
+    # [수정된 부분] 텍스트 변환을 미리 수행해서 에러 방지
+    profile_txt = json.dumps(profile_summary, ensure_ascii=False)
+    posts_txt = json.dumps(posts_summary, ensure_ascii=False)
+
     prompt = f"""
     당신은 마케팅 전략가입니다. 아래 데이터를 분석해 JSON으로 답하세요.
     [상품정보] {PRODUCT_KNOWLEDGE_BASE}
-    [인플루언서 프로필] {json.dumps(profile_summary, ensure_ascii=False)}
-    [최근 게시물] {json.dumps(posts_summary, ensure_ascii=
+    [인플루언서 프로필] {profile_txt}
+    [최근 게시물] {posts_txt}
+    
+    [출력형식]
+    {{
+        "basic": {{ "activity": "...", "contact": "..." }},
+        "auth": {{ "is_gonggu": "...", "category": "..." }},
+        "power": {{ "fan_power": "..." }},
+        "strategy": {{ "type": "...", "reason": "..." }},
+        "message": "..."
+    }}
+    """
+    try:
+        res = model.generate_content(prompt)
+        return json.loads(res.text)
+    except: return None
+
+# -----------------------------------------------------------------------------
+# 5. 메인 화면
+# -----------------------------------------------------------------------------
+st.title("💎 CozCoz Partner Miner (Apify)")
+st.caption("돌아온 Apify 로봇")
+
+target_username = st.text_input("인스타그램 ID 입력 (예: cozcoz_official)")
+
+if st.button("분석 시작") and target_username:
+    with st.spinner("Apify 로봇이 출동했습니다... (약 30~50초 소요)"):
+        raw_data, error = fetch_instagram_data_apify(target_username, api_key_apify)
+        
+        if error:
+            st.error(f"❌ 실패: {error}")
+            st.warning("팁: 잠시 후에 다시 시도하거나, 다른 계정으로 테스트해보세요.")
+        else:
+            st.success("데이터 수집 성공! AI 분석 중...")
+            res = analyze_with_gemini(raw_data, api_key_gemini)
+            
+            if res:
+                st.divider()
+                c1, c2 = st.columns(2)
+                c1.metric("전략 유형", res['strategy']['type'])
+                c2.info(f"📞 컨택: {res['basic']['contact']}")
+                
+                st.subheader("📋 제안서
