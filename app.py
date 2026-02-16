@@ -11,8 +11,8 @@ import traceback
 # 1. 페이지 설정
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="코즈코즈 파트너 마이너 (Gen 3.0)",
-    page_icon="🚀",
+    page_title="코즈코즈 파트너 마이너 (Gen 2.0 Flash)",
+    page_icon="⚡",
     layout="wide"
 )
 
@@ -42,8 +42,8 @@ with st.sidebar:
     api_key_gemini = st.text_input("Gemini API Key", type="password")
     api_key_apify = st.text_input("Apify API Key", type="password")
     
-    st.success("🚀 Gemini 3.0 Pro Preview 탑재")
-    st.caption("현존 최고 성능 모델을 사용합니다.")
+    st.success("⚡ Gemini 2.0 Flash 탑재")
+    st.caption("빠르고 강력하며, 사용량 제한이 넉넉합니다.")
 
 # -----------------------------------------------------------------------------
 # 4. 데이터 수집 & 가공 함수
@@ -54,7 +54,6 @@ def fetch_instagram_data_apify(username, apify_key):
     ACTOR_ID = "apify/instagram-scraper"
     client = ApifyClient(apify_key)
     
-    # 통계의 정확도를 위해 20개 수집
     run_input = {
         "usernames": [username],
         "resultsLimit": 20, 
@@ -75,8 +74,6 @@ def fetch_instagram_data_apify(username, apify_key):
         return None, f"Apify 에러: {str(e)}"
 
 def calculate_raw_metrics(data):
-    """요청하신 '실제 지표(Raw Data)' 계산"""
-    
     profile = {}
     posts = []
     
@@ -89,7 +86,6 @@ def calculate_raw_metrics(data):
     if not profile:
         profile = posts[0] if posts else {}
 
-    # 최근 10개 게시물 통계
     recent_10_posts = posts[:10]
     
     likes_list = [p.get('likesCount', 0) for p in recent_10_posts]
@@ -98,7 +94,6 @@ def calculate_raw_metrics(data):
     avg_likes = round(statistics.mean(likes_list), 1) if likes_list else 0
     avg_comments = round(statistics.mean(comments_list), 1) if comments_list else 0
     
-    # 최근 1달 게시물 수
     one_month_ago = datetime.utcnow() - timedelta(days=30)
     month_post_count = 0
     
@@ -134,20 +129,15 @@ def analyze_with_gemini(raw_metrics, gemini_key):
         
     genai.configure(api_key=gemini_key)
     
-    # 🚨 [핵심 업데이트] 리스트에서 확인된 3.0 모델 사용
-    # 만약 3.0이 프리뷰라 불안정하면 2.5로 자동 연결
-    try:
-        model_name = "gemini-3-pro-preview" 
-        model = genai.GenerativeModel(model_name, generation_config={"response_mime_type": "application/json"})
-    except:
-        model_name = "gemini-2.5-pro" # 대안
-        model = genai.GenerativeModel(model_name, generation_config={"response_mime_type": "application/json"})
+    # 🚨 [해결책] 3.0(할당량 초과) 대신 2.0 Flash(속도+가성비) 사용
+    model_name = "gemini-2.0-flash" 
     
-    # AI에게 보낼 데이터
+    model = genai.GenerativeModel(model_name, generation_config={"response_mime_type": "application/json"})
+    
     posts_text = []
     for p in raw_metrics['recent_posts_data']:
         posts_text.append({
-            "caption": p.get("caption", "")[:500], # 3.0은 똑똑하니까 텍스트 많이 줌
+            "caption": p.get("caption", "")[:500],
             "date": p.get("timestamp", "")
         })
 
@@ -175,40 +165,38 @@ def analyze_with_gemini(raw_metrics, gemini_key):
     }}
     """
     try:
-        st.toast(f"🧠 {model_name} 모델이 분석 중입니다...", icon="⚡")
+        st.toast(f"⚡ {model_name} 모델이 초고속 분석 중...", icon="⚡")
         res = model.generate_content(prompt)
         return json.loads(res.text)
     except Exception as e:
         st.error(f"AI 분석 오류: {str(e)}")
-        st.caption("팁: 잠시 후 다시 시도해보세요.")
+        # 만약 이것도 429가 뜨면 정말 사용량이 꽉 찬 것이므로 1.5 Flash로 낮춰야 함을 안내
+        if "429" in str(e):
+            st.error("🚨 오늘의 AI 사용량이 모두 소진된 것 같습니다. 내일 다시 시도하거나 구글 클라우드 할당량을 확인하세요.")
         return None
 
 # -----------------------------------------------------------------------------
 # 5. 메인 화면 UI
 # -----------------------------------------------------------------------------
-st.title("🚀 CozCoz Partner Miner (Gen 3.0)")
+st.title("⚡ CozCoz Partner Miner (Gen 2.0 Flash)")
 st.caption("AI 전략 분석 + 팩트 체크(Raw Data) 통합 대시보드")
 
 target_username = st.text_input("인스타그램 ID 입력 (예: cozcoz.sleep)")
 
 if st.button("🚀 분석 시작") and target_username:
     
-    # 1. 수집
     with st.spinner("데이터 채굴 중..."):
         raw_data_list, error = fetch_instagram_data_apify(target_username, api_key_apify)
         
     if error:
         st.error(f"❌ 실패: {error}")
     else:
-        # 2. 가공
         metrics = calculate_raw_metrics(raw_data_list)
         
-        # 3. 분석
-        with st.spinner("Gemini 3.0이 전략을 수립 중..."):
+        with st.spinner("Gemini 2.0 Flash가 전략 수립 중..."):
             ai_res = analyze_with_gemini(metrics, api_key_gemini)
             
         if ai_res:
-            # --- [상단] AI 전략 리포트 (핵심) ---
             st.divider()
             st.subheader("🤖 AI 전략 제안")
             
@@ -219,31 +207,25 @@ if st.button("🚀 분석 시작") and target_username:
             
             st.success(f"🎯 선정 이유: {ai_res['strategy']['reason']}")
             
-            # --- [중단] 제안서 (복사 버튼 포함) ---
             st.subheader("📨 제안서 (자동 생성)")
             st.caption("오른쪽 상단 📄 아이콘을 누르면 복사됩니다.")
             st.code(ai_res['message'], language="text") 
             
-            # --- [하단] 팩트 체크 (요청하신 상세 지표) ---
             st.divider()
             st.subheader("📉 [참고자료] 분석 전 실제 지표 (Raw Data)")
             
             with st.container(border=True):
-                # 1행: 기본 정보
                 col_a, col_b, col_c = st.columns(3)
                 col_a.metric("전체 게시물 수", f"{metrics['total_posts']:,}개")
                 col_b.metric("최근 1달 게시물", f"{metrics['month_post_count']}개")
                 
-                # 공구 이력 표시
                 gonggu_list = ai_res.get('gonggu_history', [])
                 gonggu_str = ", ".join(gonggu_list) if gonggu_list else "감지된 이력 없음"
                 col_c.metric("최근 공구 이력", gonggu_str)
                 
                 st.markdown("---")
                 
-                # 2행: 반응도 상세 (리스트 + 평균)
                 col_d, col_e = st.columns(2)
-                
                 with col_d:
                     st.markdown("**💬 댓글 반응 (최근 10개)**")
                     st.write(f"**평균: {metrics['comments_avg']}개**")
@@ -255,8 +237,6 @@ if st.button("🚀 분석 시작") and target_username:
                     st.caption(f"상세: {metrics['likes_list']}")
                 
                 st.markdown("---")
-                
-                # 3행: 바이오그래피
                 st.markdown("**📝 바이오그래피 (원문)**")
                 st.info(metrics['bio'])
 
