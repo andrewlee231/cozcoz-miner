@@ -11,8 +11,8 @@ import traceback
 # 1. 페이지 설정
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="코즈코즈 파트너 마이너 (Model Check)",
-    page_icon="🔍",
+    page_title="코즈코즈 파트너 마이너 (Gen 3.0)",
+    page_icon="🚀",
     layout="wide"
 )
 
@@ -35,34 +35,15 @@ PRODUCT_KNOWLEDGE_BASE = """
 """
 
 # -----------------------------------------------------------------------------
-# 3. 사이드바 (설정 & 모델 확인기)
+# 3. 사이드바 (설정)
 # -----------------------------------------------------------------------------
 with st.sidebar:
     st.header("⚙️ 시스템 설정")
     api_key_gemini = st.text_input("Gemini API Key", type="password")
     api_key_apify = st.text_input("Apify API Key", type="password")
     
-    st.divider()
-    st.markdown("### 🛠️ 모델 진단 도구")
-    
-    # [핵심] 사용 가능한 모델 리스트를 뽑아주는 버튼
-    if st.button("내 API로 쓸 수 있는 모델 보기"):
-        if not api_key_gemini:
-            st.error("Gemini API 키를 먼저 입력하세요.")
-        else:
-            try:
-                genai.configure(api_key=api_key_gemini)
-                # 'generateContent'를 지원하는 모델만 필터링
-                models = []
-                for m in genai.list_models():
-                    if 'generateContent' in m.supported_generation_methods:
-                        models.append(m.name)
-                
-                st.success("✅ 조회 성공!")
-                st.code("\n".join(models), language="text")
-                st.info("위 목록에 있는 이름 중 하나를 복사해서 쓰면 됩니다.")
-            except Exception as e:
-                st.error(f"조회 실패: {str(e)}")
+    st.success("🚀 Gemini 3.0 Pro Preview 탑재")
+    st.caption("현존 최고 성능 모델을 사용합니다.")
 
 # -----------------------------------------------------------------------------
 # 4. 데이터 수집 & 가공 함수
@@ -73,6 +54,7 @@ def fetch_instagram_data_apify(username, apify_key):
     ACTOR_ID = "apify/instagram-scraper"
     client = ApifyClient(apify_key)
     
+    # 통계의 정확도를 위해 20개 수집
     run_input = {
         "usernames": [username],
         "resultsLimit": 20, 
@@ -81,7 +63,7 @@ def fetch_instagram_data_apify(username, apify_key):
     }
     
     try:
-        st.toast(f"🤖 로봇이 '{username}' 계정을 스캔 중입니다...")
+        st.toast(f"🤖 로봇이 '{username}' 계정을 정밀 스캔 중...", icon="🕵️")
         run = client.actor(ACTOR_ID).call(run_input=run_input)
         dataset_items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
         
@@ -93,7 +75,7 @@ def fetch_instagram_data_apify(username, apify_key):
         return None, f"Apify 에러: {str(e)}"
 
 def calculate_raw_metrics(data):
-    """요청하신 '실제 지표'를 계산하는 함수"""
+    """요청하신 '실제 지표(Raw Data)' 계산"""
     
     profile = {}
     posts = []
@@ -107,6 +89,7 @@ def calculate_raw_metrics(data):
     if not profile:
         profile = posts[0] if posts else {}
 
+    # 최근 10개 게시물 통계
     recent_10_posts = posts[:10]
     
     likes_list = [p.get('likesCount', 0) for p in recent_10_posts]
@@ -115,6 +98,7 @@ def calculate_raw_metrics(data):
     avg_likes = round(statistics.mean(likes_list), 1) if likes_list else 0
     avg_comments = round(statistics.mean(comments_list), 1) if comments_list else 0
     
+    # 최근 1달 게시물 수
     one_month_ago = datetime.utcnow() - timedelta(days=30)
     month_post_count = 0
     
@@ -150,19 +134,20 @@ def analyze_with_gemini(raw_metrics, gemini_key):
         
     genai.configure(api_key=gemini_key)
     
-    # 🚨 [임시 조치] 가장 안전한 'gemini-pro'로 우선 설정 (1.0 버전)
-    # 대표님이 사이드바에서 조회하신 후, 1.5 버전이 있다면 코드를 그 이름으로 바꾸면 됩니다.
-    model_name = "gemini-pro" 
+    # 🚨 [핵심 업데이트] 리스트에서 확인된 3.0 모델 사용
+    # 만약 3.0이 프리뷰라 불안정하면 2.5로 자동 연결
+    try:
+        model_name = "gemini-3-pro-preview" 
+        model = genai.GenerativeModel(model_name, generation_config={"response_mime_type": "application/json"})
+    except:
+        model_name = "gemini-2.5-pro" # 대안
+        model = genai.GenerativeModel(model_name, generation_config={"response_mime_type": "application/json"})
     
-    # 혹시 1.5 flash가 있다면 그걸 쓰는게 빠름 (성능/속도 밸런스 굿)
-    # model_name = "gemini-1.5-flash" 
-    
-    model = genai.GenerativeModel(model_name, generation_config={"response_mime_type": "application/json"})
-    
+    # AI에게 보낼 데이터
     posts_text = []
     for p in raw_metrics['recent_posts_data']:
         posts_text.append({
-            "caption": p.get("caption", "")[:300],
+            "caption": p.get("caption", "")[:500], # 3.0은 똑똑하니까 텍스트 많이 줌
             "date": p.get("timestamp", "")
         })
 
@@ -177,7 +162,7 @@ def analyze_with_gemini(raw_metrics, gemini_key):
     
     [분석 요청사항]
     1. 기초체력: 활동성 평가, 컨택포인트(Bio에서 카톡/이메일/DM 중 확인되는 것)
-    2. 공구이력추출: 게시물 캡션을 읽고, 최근 한 달간 판매(공구)를 진행한 **'구체적인 제품명'**을 리스트로 추출. (없으면 빈 리스트)
+    2. **공구이력추출:** 게시물 캡션을 읽고, 최근 한 달간 판매(공구)를 진행한 **'제품명'**을 리스트로 추출. (없으면 빈 리스트)
     3. 전략선택: A/B/C 중 택1
     4. 제안서: 타겟의 상황에 맞춘 정중하고 매력적인 DM 초안.
     
@@ -190,37 +175,40 @@ def analyze_with_gemini(raw_metrics, gemini_key):
     }}
     """
     try:
-        st.toast(f"🧠 AI({model_name})가 분석 중...")
+        st.toast(f"🧠 {model_name} 모델이 분석 중입니다...", icon="⚡")
         res = model.generate_content(prompt)
         return json.loads(res.text)
     except Exception as e:
         st.error(f"AI 분석 오류: {str(e)}")
-        # 에러가 나면 사이드바의 모델 조회 기능을 써보라고 안내
-        st.warning("👈 왼쪽 사이드바의 [내 API로 쓸 수 있는 모델 보기] 버튼을 눌러보세요!")
+        st.caption("팁: 잠시 후 다시 시도해보세요.")
         return None
 
 # -----------------------------------------------------------------------------
 # 5. 메인 화면 UI
 # -----------------------------------------------------------------------------
-st.title("🔍 CozCoz Partner Miner (Diagnostic)")
-st.caption("먼저 왼쪽 사이드바에서 '모델 보기'를 눌러보세요.")
+st.title("🚀 CozCoz Partner Miner (Gen 3.0)")
+st.caption("AI 전략 분석 + 팩트 체크(Raw Data) 통합 대시보드")
 
 target_username = st.text_input("인스타그램 ID 입력 (예: cozcoz.sleep)")
 
 if st.button("🚀 분석 시작") and target_username:
     
+    # 1. 수집
     with st.spinner("데이터 채굴 중..."):
         raw_data_list, error = fetch_instagram_data_apify(target_username, api_key_apify)
         
     if error:
         st.error(f"❌ 실패: {error}")
     else:
+        # 2. 가공
         metrics = calculate_raw_metrics(raw_data_list)
         
-        with st.spinner("AI 전략 수립 중..."):
+        # 3. 분석
+        with st.spinner("Gemini 3.0이 전략을 수립 중..."):
             ai_res = analyze_with_gemini(metrics, api_key_gemini)
             
         if ai_res:
+            # --- [상단] AI 전략 리포트 (핵심) ---
             st.divider()
             st.subheader("🤖 AI 전략 제안")
             
@@ -231,36 +219,46 @@ if st.button("🚀 분석 시작") and target_username:
             
             st.success(f"🎯 선정 이유: {ai_res['strategy']['reason']}")
             
+            # --- [중단] 제안서 (복사 버튼 포함) ---
             st.subheader("📨 제안서 (자동 생성)")
+            st.caption("오른쪽 상단 📄 아이콘을 누르면 복사됩니다.")
             st.code(ai_res['message'], language="text") 
             
+            # --- [하단] 팩트 체크 (요청하신 상세 지표) ---
             st.divider()
             st.subheader("📉 [참고자료] 분석 전 실제 지표 (Raw Data)")
             
             with st.container(border=True):
+                # 1행: 기본 정보
                 col_a, col_b, col_c = st.columns(3)
                 col_a.metric("전체 게시물 수", f"{metrics['total_posts']:,}개")
                 col_b.metric("최근 1달 게시물", f"{metrics['month_post_count']}개")
-                # 공구 이력 표시 로직 강화
+                
+                # 공구 이력 표시
                 gonggu_list = ai_res.get('gonggu_history', [])
-                gonggu_str = ", ".join(gonggu_list) if gonggu_list else "공구 이력 없음"
-                col_c.metric("공구 진행 이력", gonggu_str)
+                gonggu_str = ", ".join(gonggu_list) if gonggu_list else "감지된 이력 없음"
+                col_c.metric("최근 공구 이력", gonggu_str)
                 
                 st.markdown("---")
                 
+                # 2행: 반응도 상세 (리스트 + 평균)
                 col_d, col_e = st.columns(2)
+                
                 with col_d:
                     st.markdown("**💬 댓글 반응 (최근 10개)**")
                     st.write(f"**평균: {metrics['comments_avg']}개**")
-                    st.caption(f"{metrics['comments_list']}")
+                    st.caption(f"상세: {metrics['comments_list']}")
+                    
                 with col_e:
                     st.markdown("**❤️ 좋아요 반응 (최근 10개)**")
                     st.write(f"**평균: {metrics['likes_avg']}개**")
-                    st.caption(f"{metrics['likes_list']}")
+                    st.caption(f"상세: {metrics['likes_list']}")
                 
                 st.markdown("---")
+                
+                # 3행: 바이오그래피
                 st.markdown("**📝 바이오그래피 (원문)**")
                 st.info(metrics['bio'])
 
         else:
-            st.error("AI 분석 실패. 왼쪽 사이드바에서 사용 가능한 모델을 확인하세요.")
+            st.error("AI 분석에 실패했습니다. 키를 확인해주세요.")
