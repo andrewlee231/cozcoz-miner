@@ -5,14 +5,14 @@ import json
 import pandas as pd
 from datetime import datetime, timedelta
 import statistics
-import traceback # 에러 추적용 도구
+import traceback 
 
 # -----------------------------------------------------------------------------
 # 1. 페이지 설정
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="코즈코즈 파트너 마이너 (Debug Mode)",
-    page_icon="🔧",
+    page_title="코즈코즈 파트너 마이너 (Pro)",
+    page_icon="💎",
     layout="wide"
 )
 
@@ -41,11 +41,10 @@ with st.sidebar:
     st.header("⚙️ 시스템 설정")
     api_key_gemini = st.text_input("Gemini API Key", type="password")
     api_key_apify = st.text_input("Apify API Key", type="password")
-    st.warning("🔧 디버그 모드 작동 중")
-    st.caption("모든 처리 과정이 화면에 표시됩니다.")
+    st.info("🚀 High-Performance Model\n(Gemini 1.5 Pro 탑재)")
 
 # -----------------------------------------------------------------------------
-# 4. 데이터 수집 & 가공 함수 (로그 출력 추가)
+# 4. 데이터 수집 & 가공 함수
 # -----------------------------------------------------------------------------
 def fetch_instagram_data_apify(username, apify_key):
     if not apify_key: return None, "Apify 키가 없습니다."
@@ -53,35 +52,33 @@ def fetch_instagram_data_apify(username, apify_key):
     ACTOR_ID = "apify/instagram-scraper"
     client = ApifyClient(apify_key)
     
+    # 최근 1달 데이터를 정확히 뽑기 위해 넉넉히 20개 수집
     run_input = {
         "usernames": [username],
-        "resultsLimit": 15, 
+        "resultsLimit": 20, 
         "scrapePosts": True,
         "scrapeComments": True,
     }
     
     try:
-        # [로그] 실행 시작
-        st.toast(f"🤖 Apify 로봇에게 '{username}' 수집 명령 전달...")
-        
+        st.toast(f"🤖 로봇이 '{username}' 계정을 스캔 중입니다...")
         run = client.actor(ACTOR_ID).call(run_input=run_input)
-        
-        # [로그] 수집 완료
         dataset_items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
         
         if not dataset_items:
-            return None, "데이터가 비어있습니다. (비공개 계정 또는 차단)"
+            return None, "데이터 없음 (비공개 계정 또는 차단)"
             
         return dataset_items, None
     except Exception as e:
-        # [로그] 상세 에러 리턴
-        return None, f"Apify 에러 발생: {str(e)}"
+        return None, f"Apify 에러: {str(e)}"
 
 def calculate_raw_metrics(data):
-    """수집된 데이터에서 '실제 지표'를 계산하는 함수"""
+    """요청하신 '실제 지표'를 계산하는 함수"""
     
     profile = {}
     posts = []
+    
+    # 데이터 분류
     for item in data:
         if 'followersCount' in item and not profile:
             profile = item
@@ -91,22 +88,30 @@ def calculate_raw_metrics(data):
     if not profile:
         profile = posts[0] if posts else {}
 
-    recent_posts = posts[:10]
+    # 1. 최근 10개 게시물 데이터 뽑기
+    recent_10_posts = posts[:10]
     
-    likes_list = [p.get('likesCount', 0) for p in recent_posts]
-    comments_list = [p.get('commentsCount', 0) for p in recent_posts]
+    likes_list = [p.get('likesCount', 0) for p in recent_10_posts]
+    comments_list = [p.get('commentsCount', 0) for p in recent_10_posts]
     
-    avg_likes = statistics.mean(likes_list) if likes_list else 0
-    avg_comments = statistics.mean(comments_list) if comments_list else 0
+    avg_likes = round(statistics.mean(likes_list), 1) if likes_list else 0
+    avg_comments = round(statistics.mean(comments_list), 1) if comments_list else 0
     
+    # 2. 최근 한 달 게시물 수 계산
     one_month_ago = datetime.utcnow() - timedelta(days=30)
     month_post_count = 0
     
+    # 날짜 파싱 로직
     for p in posts:
         ts_str = p.get('timestamp')
         if ts_str:
             try:
-                ts = datetime.strptime(ts_str.replace('Z', ''), "%Y-%m-%dT%H:%M:%S.%f") if '.' in ts_str else datetime.strptime(ts_str.replace('Z', ''), "%Y-%m-%dT%H:%M:%S")
+                # 인스타 날짜 형식에 따라 유연하게 처리
+                if '.' in ts_str:
+                    ts = datetime.strptime(ts_str.replace('Z', ''), "%Y-%m-%dT%H:%M:%S.%f")
+                else:
+                    ts = datetime.strptime(ts_str.replace('Z', ''), "%Y-%m-%dT%H:%M:%S")
+                
                 if ts > one_month_ago:
                     month_post_count += 1
             except: pass
@@ -118,108 +123,133 @@ def calculate_raw_metrics(data):
         "bio": profile.get('biography', ''),
         "month_post_count": month_post_count,
         "likes_list": likes_list,
-        "likes_avg": round(avg_likes, 1),
+        "likes_avg": avg_likes,
         "comments_list": comments_list,
-        "comments_avg": round(avg_comments, 1),
-        "recent_posts_data": recent_posts
+        "comments_avg": avg_comments,
+        "recent_posts_data": recent_10_posts # AI에게 넘길 데이터
     }
 
 def analyze_with_gemini(raw_metrics, gemini_key):
     if not gemini_key: 
-        st.error("Gemini API 키가 입력되지 않았습니다.")
+        st.error("Gemini API 키가 없습니다.")
         return None
         
     genai.configure(api_key=gemini_key)
-    model = genai.GenerativeModel("gemini-1.5-pro-latest", generation_config={"response_mime_type": "application/json"})
     
-    posts_for_ai = []
+    # 🚨 요청하신 '더 높은 모델' (Gemini 1.5 Pro) 적용
+    model = genai.GenerativeModel("gemini-1.5-pro", generation_config={"response_mime_type": "application/json"})
+    
+    # AI에게 보낼 캡션 데이터 (공구 제품 추출용)
+    posts_text = []
     for p in raw_metrics['recent_posts_data']:
-        posts_for_ai.append({
-            "caption": p.get("caption", "")[:150],
-            "likes": p.get("likesCount", 0),
+        posts_text.append({
+            "caption": p.get("caption", "")[:300], # 캡션을 넉넉히 줌
             "date": p.get("timestamp", "")
         })
 
     prompt = f"""
-    당신은 E-commerce 전략가입니다. 아래 데이터를 분석해 JSON으로 답하세요.
+    당신은 10년차 E-commerce 전략가입니다. 아래 데이터를 분석해 JSON으로 답하세요.
+    
     [상품정보] {PRODUCT_KNOWLEDGE_BASE}
-    [프로필 및 통계]
+    [프로필 정보]
     - Bio: {raw_metrics['bio']}
     - Followers: {raw_metrics['followers']}
-    - Avg Likes: {raw_metrics['likes_avg']}
-    [최근 게시물] {json.dumps(posts_for_ai, ensure_ascii=False)}
+    [최근 게시물 텍스트] {json.dumps(posts_text, ensure_ascii=False)}
     
     [분석 요청사항]
-    1. 기초체력: 활동성, 컨택포인트(Bio 분석하여 카톡/이메일 추출)
-    2. 공구이력추적: 게시물 캡션들을 분석해서 **최근 한 달간 진행한 것으로 보이는 공구 제품명**을 추출해줘. (없으면 '없음'으로 표기)
+    1. 기초체력: 활동성 평가, 컨택포인트(Bio에서 카톡/이메일/DM 중 확인되는 것)
+    2. **공구이력추출(중요):** 게시물 캡션을 꼼꼼히 읽고, 최근 한 달간 판매(공구)를 진행한 것으로 보이는 **'구체적인 제품명'**을 추출해. (없으면 '공구 없음' 표기)
     3. 전략선택: A/B/C 중 택1
-    4. 제안서: DM 초안 작성
+    4. 제안서: 타겟의 상황에 맞춘 정중하고 매력적인 DM 초안.
     
     [출력형식]
     {{
         "basic": {{ "activity": "...", "contact": "..." }},
-        "history": {{ "recent_products": ["제품1", "제품2"] }}, 
+        "gonggu_history": ["제품A", "제품B"], 
         "strategy": {{ "type": "...", "reason": "..." }},
         "message": "..."
     }}
     """
     try:
-        # [로그] AI 요청 시작
-        st.toast("🧠 Gemini에게 분석 요청 중...")
+        st.toast("🧠 고성능 AI(1.5 Pro)가 심층 분석 중...")
         res = model.generate_content(prompt)
         return json.loads(res.text)
     except Exception as e:
-        # 🚨 여기서 에러가 나면 화면에 바로 찍어버림
-        st.error("❌ Gemini 분석 중 치명적 오류 발생!")
-        st.code(traceback.format_exc()) # 에러 위치 추적
+        st.error(f"AI 분석 오류: {str(e)}")
         return None
 
 # -----------------------------------------------------------------------------
-# 5. 메인 화면 UI (디버그 창 포함)
+# 5. 메인 화면 UI
 # -----------------------------------------------------------------------------
-st.title("🔧 CozCoz Partner Miner (Debug)")
-st.caption("에러가 나면 아래 '상세 로그'를 열어보세요.")
+st.title("⛏️ CozCoz Partner Miner (Pro)")
+st.caption("AI 전략 분석 + 상세 팩트 체크(Raw Data) 통합 대시보드")
 
 target_username = st.text_input("인스타그램 ID 입력 (예: cozcoz_official)")
 
 if st.button("🚀 분석 시작") and target_username:
     
-    # 1. 상세 로그를 볼 수 있는 확장형 박스 생성
-    debug_expander = st.expander("🔍 [개발자용] 상세 처리 과정 로그 (클릭)", expanded=True)
-    
-    with debug_expander:
-        st.write("1️⃣ 데이터 수집 시작...")
+    # 1. 수집
+    with st.spinner("데이터 채굴 중..."):
         raw_data_list, error = fetch_instagram_data_apify(target_username, api_key_apify)
         
-        if error:
-            st.error(f"수집 실패: {error}")
-        else:
-            st.success(f"수집 성공! 데이터 {len(raw_data_list)}개 확보")
-            # [디버그] 수집된 데이터 샘플 보여주기
-            st.json(raw_data_list[0] if raw_data_list else "데이터 없음")
-            
-            st.write("2️⃣ 통계 데이터 가공 중...")
-            metrics = calculate_raw_metrics(raw_data_list)
-            st.json(metrics) # 계산된 통계 보여주기
-            
-            st.write("3️⃣ AI 분석 요청 중...")
+    if error:
+        st.error(f"❌ 실패: {error}")
+    else:
+        # 2. 가공
+        metrics = calculate_raw_metrics(raw_data_list)
+        
+        # 3. 분석
+        with st.spinner("AI 전략 수립 중..."):
             ai_res = analyze_with_gemini(metrics, api_key_gemini)
             
-            if ai_res:
-                st.success("AI 분석 완료!")
+        if ai_res:
+            # --- [상단] AI 전략 리포트 (핵심) ---
+            st.divider()
+            st.subheader("🤖 AI 전략 제안")
+            
+            c1, c2, c3 = st.columns(3)
+            c1.metric("추천 전략", ai_res['strategy']['type'], help="A:성장형, B:매출형, C:브랜딩형")
+            c2.metric("팔로워", f"{metrics['followers']:,}명")
+            c3.info(f"📞 {ai_res['basic']['contact']}")
+            
+            st.success(f"🎯 선정 이유: {ai_res['strategy']['reason']}")
+            
+            # --- [중단] 제안서 (복사 버튼 포함) ---
+            st.subheader("📨 제안서 (자동 생성)")
+            st.caption("오른쪽 상단 📄 아이콘을 누르면 복사됩니다.")
+            st.code(ai_res['message'], language="text") 
+            
+            # --- [하단] 팩트 체크 (요청하신 상세 지표) ---
+            st.divider()
+            st.subheader("📉 [참고자료] 분석 전 실제 지표 (Raw Data)")
+            
+            with st.container(border=True):
+                # 1행: 기본 정보
+                col_a, col_b, col_c = st.columns(3)
+                col_a.metric("전체 게시물 수", f"{metrics['total_posts']:,}개")
+                col_b.metric("최근 1달 게시물", f"{metrics['month_post_count']}개")
+                col_c.metric("공구 진행 이력", ", ".join(ai_res['gonggu_history']))
                 
-                # --- [결과 화면] ---
-                st.divider()
-                st.subheader("✅ 최종 결과 리포트")
+                st.markdown("---")
                 
-                c1, c2, c3 = st.columns(3)
-                c1.metric("추천 전략", ai_res['strategy']['type'])
-                c2.metric("팔로워", f"{metrics['followers']:,}명")
-                c3.info(f"📞 {ai_res['basic']['contact']}")
+                # 2행: 반응도 상세 (리스트 + 평균)
+                col_d, col_e = st.columns(2)
                 
-                st.success(f"💡 선정 이유: {ai_res['strategy']['reason']}")
-                st.subheader("📨 제안서")
-                st.code(ai_res['message'], language="text")
+                with col_d:
+                    st.markdown("**💬 댓글 반응 (최근 10개)**")
+                    st.write(f"**평균: {metrics['comments_avg']}개**")
+                    st.caption(f"상세 리스트: {metrics['comments_list']}")
+                    
+                with col_e:
+                    st.markdown("**❤️ 좋아요 반응 (최근 10개)**")
+                    st.write(f"**평균: {metrics['likes_avg']}개**")
+                    st.caption(f"상세 리스트: {metrics['likes_list']}")
                 
-            else:
-                st.error("AI가 응답하지 못했습니다. 위 로그를 확인하세요.")
+                st.markdown("---")
+                
+                # 3행: 바이오그래피
+                st.markdown("**📝 바이오그래피 (원문)**")
+                st.info(metrics['bio'])
+
+        else:
+            st.error("AI 분석에 실패했습니다. 키를 확인해주세요.")
