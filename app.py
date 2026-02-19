@@ -199,4 +199,120 @@ def analyze_with_gemini(raw_metrics, gemini_key, md_context):
        - 가독성 극대화 (엔터, 기호 활용). 실무자가 수정 없이 복붙 가능하게 작성.
        
        🚨 [절대 금지 규칙 - 위반 시 감점]:
-       MD 파일 내부에 있는 '비용 분담', '수익
+       MD 파일 내부에 있는 '비용 분담', '수익 쉐어 비율', '5:5', '광고비 부담' 등 금전적인 조건은 절대 제안서(message)에 1글자도 적지 마세요. 
+       오직 '본사 전폭 지원', 'Meta 파트너십 광고 기술 지원'이라는 긍정적인 혜택만 강조하여 미팅(통화)을 유도하세요.
+    
+    [출력형식]
+    {{
+        "contact": "...",
+        "authenticity": {{
+            "gonggu_count": "...",
+            "buildup_index": "...",
+            "recent_sales_list": "..."
+        }},
+        "power": {{
+            "true_fans": "...",
+            "buying_signal": "...",
+            "cs_signal": "..."
+        }},
+        "strategy": "...",
+        "message": "..."
+    }}
+    """
+    try:
+        st.toast("🧠 AI가 MD 문서를 분석하며 제안서를 작성 중...", icon="⚡")
+        res = model.generate_content(prompt)
+        return json.loads(res.text)
+    except Exception as e:
+        st.error(f"AI 분석 오류: {str(e)}")
+        return None
+
+# -----------------------------------------------------------------------------
+# 5. 메인 화면 UI (요청사항 완벽 반영)
+# -----------------------------------------------------------------------------
+st.title("💎 CozCoz Partner Miner (Final Dashboard)")
+
+target_username = st.text_input("🔍 인스타그램 ID 입력 (예: cozcoz.sleep)")
+
+if st.button("🚀 심층 분석 시작") and target_username:
+    if not st.session_state.md_content:
+        st.error("⚠️ 왼쪽 사이드바에서 제안서 기준(MD) 파일을 먼저 업로드해주세요!")
+    else:
+        with st.spinner("데이터 채굴 중..."):
+            raw_data, error = fetch_instagram_data_apify(target_username, api_key_apify)
+            
+        if error:
+            st.error(f"❌ 실패: {error}")
+        else:
+            metrics = calculate_raw_metrics(raw_data)
+            
+            with st.spinner("AI가 분석 대시보드를 생성 중입니다..."):
+                ai_res = analyze_with_gemini(metrics, api_key_gemini, st.session_state.md_content)
+                
+            if ai_res:
+                
+                # ==========================================
+                # 1. 기초 체력 (Basic Health)
+                # ==========================================
+                st.markdown("### 📊 1. 기초 체력 (Basic Health) - 최근 30일 데이터 기준")
+                
+                with st.container(border=True):
+                    st.info(f"**📝 프로필 소개글:**\n{metrics['bio']}")
+                    st.success(f"**📞 [핵심] 컨택 포인트:**\n{ai_res['contact']}")
+                    
+                    st.markdown("---")
+                    
+                    col1, col2, col3, col4, col5 = st.columns(5)
+                    col1.metric("표기 팔로워", f"{metrics['followers']:,}명")
+                    col2.metric("게시물 수(최근1개월)", f"{metrics['month_post_count']}개")
+                    col3.metric("🎬 릴스 평균 조회수(최근1개월)", f"{metrics['avg_reels_views']:,}회") 
+                    col4.metric("평균 좋아요(최근1개월)", f"{metrics['avg_likes']:,}개")
+                    col5.metric("평균 댓글(최근1개월)", f"{metrics['avg_comments']:,}개")
+
+                # ==========================================
+                # 2. 공구 진정성 검증 (Authenticity Check) - 강조
+                # ==========================================
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("## 🚨 2. 공구 진정성 검증 (Authenticity Check)")
+                
+                with st.container(border=True):
+                    auth = ai_res['authenticity']
+                    c_auth1, c_auth2 = st.columns(2)
+                    c_auth1.metric("🛒 월 공구 횟수", auth['gonggu_count'])
+                    c_auth2.metric("📈 빌드업 지수(공구1건당)", auth['buildup_index'])
+                    
+                    st.markdown("**📋 판매 목록(최근1개월)**")
+                    st.write(f"> {auth['recent_sales_list']}")
+
+                # ==========================================
+                # 3. 구매력 및 팬덤 화력 (Buying Power)
+                # ==========================================
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("### 🔥 3. 구매력 및 팬덤 화력 (Buying Power)")
+                
+                with st.container(border=True):
+                    pwr = ai_res['power']
+                    col_p1, col_p2, col_p3 = st.columns(3)
+                    
+                    with col_p1:
+                        st.markdown("**💎 찐팬 지표**")
+                        st.write(pwr['true_fans'])
+                        
+                    with col_p2:
+                        st.markdown("**🗣️ 구매 시그널**")
+                        st.write(pwr['buying_signal'])
+                        
+                    with col_p3:
+                        st.markdown("**🎧 CS 응대**")
+                        st.write(pwr['cs_signal'])
+
+                # ==========================================
+                # 4. [최종] AI 추천 전략 & 자동 제안서
+                # ==========================================
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("### 🎯 4. [최종] AI 추천 전략 & 제안서")
+                
+                st.info(f"**💡 AI 추천 전략:** {ai_res['strategy']}")
+                
+                st.markdown("**📨 자동 제안서 (오른쪽 위 📄 버튼을 누르면 즉시 복사됩니다)**")
+                st.code(ai_res['message'], language="text", wrap_lines=True)
