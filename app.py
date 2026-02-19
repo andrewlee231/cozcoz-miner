@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import statistics
 
 # -----------------------------------------------------------------------------
-# 1. 페이지 설정 & 안전한 UI 패치
+# 1. 페이지 설정 & 안전한 UI 패치 (글자 잘림 방지)
 # -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="CozCoz Partner Miner (Master)",
@@ -14,22 +14,29 @@ st.set_page_config(
     layout="wide"
 )
 
-# 🚨 메인 화면을 날린 위험한 코드를 제거하고 안전한 필수 기능만 남겼습니다.
+# 🚨 [가독성 최적화 CSS] 지표 글자 크기 축소 및 줄바꿈 허용
 st.markdown("""
 <style>
-    /* 메트릭(지표 숫자) 사이즈 압축하여 한눈에 들어오게 조절 */
+    /* 메트릭(지표 숫자) 사이즈 압축 및 글자 잘림(...) 방지 자동 줄바꿈 */
     [data-testid="stMetricValue"] {
-        font-size: 1.5rem !important;
+        font-size: 1.2rem !important; /* 글자 크기 축소 */
+        white-space: normal !important; /* 가로로 짤리지 않고 밑으로 줄바꿈 */
+        word-break: keep-all !important;
+        line-height: 1.3 !important;
+    }
+    [data-testid="stMetricLabel"] {
+        font-size: 0.9rem !important;
+        white-space: normal !important;
     }
     
-    /* 💡 [핵심] 제안서 코드 박스 세로 스크롤 없애고 전체 펼치기 */
+    /* 제안서 코드 박스 세로 스크롤 없애고 전체 펼치기 */
     .stCodeBlock pre {
         max-height: none !important; 
         white-space: pre-wrap !important; 
         word-break: break-word !important;
     }
     
-    /* 💡 [핵심] 복사(Copy) 버튼 상시 노출 및 강조 */
+    /* 복사(Copy) 버튼 상시 노출 및 강조 */
     .stCodeBlock button {
         opacity: 1 !important; 
         transform: scale(1.2); 
@@ -148,10 +155,11 @@ def analyze_with_gemini(raw_metrics, gemini_key, md_context):
             "comments": p.get("commentsCount", 0)
         })
 
+    # 🚨 [프롬프트 전면 수정] 제안서 퀄리티 극대화를 위한 디테일 지시
     prompt = f"""
     당신은 실력 있는 E-commerce 파트장입니다. 아래 데이터를 분석해 JSON으로 반환하세요.
     
-    [상품 및 제안 기준 MD 파일 내용]
+    [상품 및 제안 기준 MD 파일 내용 (필수 반영)]
     {md_context}
     
     [인플루언서 스펙]
@@ -161,12 +169,17 @@ def analyze_with_gemini(raw_metrics, gemini_key, md_context):
     [최근 게시물 내용] {json.dumps(posts_text, ensure_ascii=False)}
     
     [분석 요청사항]
-    1. 컨택 포인트: Bio와 Link를 스캔하여 '오픈카톡' 또는 '개인이메일' 추출. (기본 linktr.ee 자체 주소나 의미 없는 버튼은 무시). 
+    1. 컨택 포인트: Bio와 Link를 스캔하여 '오픈카톡' 또는 '개인이메일' 추출. 
        - 찾으면: "[카카오톡/이메일] 해당 주소" 
        - 못 찾으면: "컨택 포인트 없음 (추정 링크: ...)"
-    2. 공구 진정성: 캡션을 보고 월 공구 횟수, 빌드업 지수(예고-오픈 흐름 여부), 최근 한 달 판매 목록(경쟁사 제품이면 Bad 표기) 추출.
-    3. 찐팬 지표 & 구매 시그널: 캡션의 소통 방식과 평균 좋아요/댓글을 바탕으로 찐팬 비율 추정 및 CS 친절도/소통력 유추.
-    4. AI 추천 전략 & 제안서: MD 파일 내용을 기반으로 해당 계정에 맞는 맞춤형 제안서 작성. 복사해서 바로 붙여넣기 좋도록 가독성 있게 작성.
+    2. 공구 진정성: 캡션을 보고 월 공구 횟수, 빌드업 지수(예: "상 (예고 2회)" 처럼 짧게 요약), 최근 한 달 판매 목록 추출.
+    3. 찐팬 지표 & 구매 시그널: 캡션의 소통 방식과 평균 좋아요/댓글을 바탕으로 찐팬 비율 추정 및 CS 친절도 유추.
+    4. AI 추천 전략 & 맞춤 제안서 (매우 중요):
+       업로드된 [MD 파일 내용]을 100% 흡수하여 아래 구조로 완벽한 비즈니스 제안서를 작성하세요.
+       - [페인포인트 공략]: 상대방의 피드를 분석하여 현재 겪고 있을 한계점(오가닉 도달 저하, 핏이 안 맞는 공구로 인한 피로도 등)을 찌르며 공감대 형성.
+       - [상품 핵심 스펙]: MD 파일에 기재된 '가격', '구체적인 제품 강점/내용'을 명확한 불릿 포인트(-)로 나열.
+       - [성공 사례 어필]: MD 파일에 있는 '성공 사례(레퍼런스)'를 수치나 성과 위주로 제시하여 신뢰도 확보.
+       - 실무자가 수정 없이 바로 복사해서 보낼 수 있도록 가독성(엔터, 기호 활용)을 극대화하세요.
     
     [출력형식]
     {{
@@ -185,7 +198,7 @@ def analyze_with_gemini(raw_metrics, gemini_key, md_context):
     }}
     """
     try:
-        st.toast("🧠 AI가 MD 문서를 기반으로 분석 중...", icon="⚡")
+        st.toast("🧠 AI가 MD 문서를 분석하여 강력한 제안서를 작성 중...", icon="⚡")
         res = model.generate_content(prompt)
         return json.loads(res.text)
     except Exception as e:
@@ -193,7 +206,7 @@ def analyze_with_gemini(raw_metrics, gemini_key, md_context):
         return None
 
 # -----------------------------------------------------------------------------
-# 5. 메인 화면 UI (복구 완료)
+# 5. 메인 화면 UI
 # -----------------------------------------------------------------------------
 st.title("💎 CozCoz Partner Miner")
 
@@ -265,6 +278,5 @@ if st.button("🚀 심층 분석 시작") and target_username:
                 
                 st.info(f"**💡 AI 추천 전략:** {ai_res['strategy']}")
                 
-                st.markdown("**📨 자동 제안서 (아래 내용 전체가 한눈에 펼쳐집니다)**")
-                # wrap_lines=True 가로 스크롤 방지
+                st.markdown("**📨 자동 제안서 (오른쪽 위 버튼 클릭 시 전체 복사)**")
                 st.code(ai_res['message'], language="text", wrap_lines=True)
