@@ -51,41 +51,36 @@ with st.sidebar:
 def fetch_instagram_data_apify(username, apify_key):
     if not apify_key: return None, "Apify 키가 없습니다."
     
-    ACTOR_ID = "apify/instagram-scraper"
+    # 🚨 로봇 교체 완료: instagram-profile-scraper
+    ACTOR_ID = "apify/instagram-profile-scraper"
     client = ApifyClient(apify_key)
     
+    # Profile Scraper에 맞춘 심플한 입력값
     run_input = {
-        "usernames": [username],
-        "resultsLimit": 20, 
-        "scrapePosts": True,
-        "scrapeComments": True,
+        "usernames": [username]
     }
     
     try:
-        st.toast(f"🤖 로봇이 '{username}' 계정을 정밀 스캔 중...", icon="🕵️")
+        st.toast(f"🚁 드론 로봇이 '{username}' 프로필을 스캔 중...", icon="🚁")
         run = client.actor(ACTOR_ID).call(run_input=run_input)
         dataset_items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
         
         if not dataset_items:
             return None, "데이터 없음 (비공개 계정 또는 차단)"
             
-        return dataset_items, None
+        # Profile Scraper는 1개의 딕셔너리에 프로필과 게시물을 모두 담아 반환함
+        return dataset_items[0], None 
     except Exception as e:
         return None, f"Apify 에러: {str(e)}"
 
 def calculate_raw_metrics(data):
-    profile = {}
-    posts = []
+    """Profile Scraper 구조에 맞춰 '실제 지표'를 계산하는 함수"""
     
-    for item in data:
-        if 'followersCount' in item and not profile:
-            profile = item
-        if 'caption' in item:
-            posts.append(item)
-            
-    if not profile:
-        profile = posts[0] if posts else {}
-
+    profile = data
+    # 게시물 데이터는 'latestPosts' 안에 리스트로 들어있음
+    posts = data.get('latestPosts', []) 
+    
+    # 최근 10개 게시물 통계
     recent_10_posts = posts[:10]
     
     likes_list = [p.get('likesCount', 0) for p in recent_10_posts]
@@ -94,6 +89,7 @@ def calculate_raw_metrics(data):
     avg_likes = round(statistics.mean(likes_list), 1) if likes_list else 0
     avg_comments = round(statistics.mean(comments_list), 1) if comments_list else 0
     
+    # 최근 1달 게시물 수 계산
     one_month_ago = datetime.utcnow() - timedelta(days=30)
     month_post_count = 0
     
@@ -109,8 +105,9 @@ def calculate_raw_metrics(data):
                     month_post_count += 1
             except: pass
 
+    # AI에게 넘겨줄 최종 규격 (기존과 100% 동일하게 맞춰서 다른 코드 변경 불필요)
     return {
-        "username": profile.get('ownerUsername', ''),
+        "username": profile.get('username', profile.get('ownerUsername', '')),
         "followers": profile.get('followersCount', 0),
         "total_posts": profile.get('postsCount', 0),
         "bio": profile.get('biography', ''),
@@ -121,6 +118,8 @@ def calculate_raw_metrics(data):
         "comments_avg": avg_comments,
         "recent_posts_data": recent_10_posts
     }
+
+# 👇 여기서부터 이어지는 def analyze_with_gemini(...) 함수는 건드리지 마세요!
 
 def analyze_with_gemini(raw_metrics, gemini_key):
     if not gemini_key: 
@@ -242,3 +241,4 @@ if st.button("🚀 분석 시작") and target_username:
 
         else:
             st.error("AI 분석에 실패했습니다. 키를 확인해주세요.")
+
